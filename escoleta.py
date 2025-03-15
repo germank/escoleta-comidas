@@ -3,6 +3,7 @@ import random
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 import json
+import yaml
 import locale
 locale.setlocale(locale.LC_ALL, 'ca_ES')
 import calendar
@@ -11,7 +12,14 @@ import random
 from collections import defaultdict, deque
 from PIL import Image, ImageDraw, ImageFont
 
-def generate_schedule(kids, availability, weekday_constraints, past_allocations, year, month, closed_days):
+def load_config(filename="config.yml"):
+    try:
+        with open(filename, "r") as f:
+            return yaml.safe_load(f)
+    except FileNotFoundError:
+        return {}
+
+def generate_schedule(kids, unavailability, weekday_constraints, past_allocations, year, month, closed_days):
     days_in_month = calendar.monthrange(year, month)[1]
     schedule = {}
     fairness_score = defaultdict(int, past_allocations.get("fairness", {}))
@@ -20,21 +28,24 @@ def generate_schedule(kids, availability, weekday_constraints, past_allocations,
     
     # Default availability is the entire month
     full_month = set(range(1, days_in_month + 1))
-    availability = {kid: availability.get(kid, full_month) for kid in kids}
+    availability = {kid: full_month - set(unavailability.get(kid, [])) for kid in kids}
     
     for day in range(1, days_in_month + 1):
         if day in closed_days:
             schedule[day] = "TANCAT"
             continue
         
-        weekday = calendar.weekday(year, month, day)
+        weekday = calendar.weekday(year, month, day) + 1
         week_num = (day + calendar.monthrange(year, month)[0] - 1) // 7  # Determine the week number
-        eligible_kids = [kid for kid in kids if day in availability[kid] and weekday in weekday_constraints.get(kid, set(range(5))) and kid not in week_allocations[week_num]]
+        eligible_kids = [kid for kid in kids if day in availability[kid] and weekday in weekday_constraints.get(kid, set(range(1, 5+1))) and kid not in week_allocations[week_num]]
         
         if eligible_kids:
             # Sort first by fairness score, then by recency (least recently allocated first)
             kid = min(eligible_kids, key=lambda k: (fairness_score[k], recency_queue.index(k) if k in recency_queue else -1))
             print(f'scheduling {kid} to day {day} with fairness score {fairness_score[kid]} and recency index {recency_queue.index(kid) if kid in recency_queue else -1}')
+            if kid in recency_queue and recency_queue.index(kid) > 0:
+                first_in_queue=recency_queue[0]
+                print(f"{kid} went ahead of {first_in_queue} with fairness score {fairness_score[first_in_queue]}")
             schedule[day] = kid
             fairness_score[kid] += 1  # Increase fairness score after allocation
             if kid in recency_queue:
@@ -100,20 +111,19 @@ def render_calendar(schedule, year, month):
     img.show()
 
 def main():
-    year, month = 2025, 3
-    kids = ["Lucas", "Giulio", "Arai", "Gala", "Gina", "Aurora", "Sue", "Leo", "Julen", "Mar", "Mia"]
-    availability = {}  # Defaults to full month
-    weekday_constraints = {
-        "Gina": {0, 1, 2, 4},  # Gina no puede los jueves
-        "Gala": {2, 3},        # Gala puede solo miercoles y jueves
-    }
+    config = load_config()
+    year, month = config.get("year", 2024), config.get("month", 3)
+    kids = config.get("kids", [])
+    unavailability = config.get("unavailability", {})
+    weekday_constraints = config.get("weekday_constraints", {})
+    closed_days = set(config.get("closed_days", []))
+
     past_allocations = load_allocations(year, month - 1 if month > 1 else 12)  # Load past month allocations
     for k in kids:
         if k not in past_allocations['fairness']:
             past_allocations['fairness'][k] = max(past_allocations['fairness'].values()) # start with the best score
-    closed_days = {3}
-    
-    schedule, updated_allocations = generate_schedule(kids, availability, weekday_constraints, past_allocations, year, month, closed_days)
+
+    schedule, updated_allocations = generate_schedule(kids, unavailability, weekday_constraints, past_allocations, year, month, closed_days)
     save_allocations(updated_allocations, year, month)
     render_calendar(schedule, year, month)
 
