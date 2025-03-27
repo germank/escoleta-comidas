@@ -19,7 +19,7 @@ def load_config(filename="config.yml"):
     except FileNotFoundError:
         return {}
 
-def generate_schedule(kids, unavailability, weekday_constraints, past_allocations, year, month, closed_days):
+def generate_schedule(kids, unavailability, fixed, weekday_constraints, past_allocations, year, month, closed_days):
     days_in_month = calendar.monthrange(year, month)[1]
     schedule = {}
     fairness_score = defaultdict(int, past_allocations.get("fairness", {}))
@@ -37,7 +37,12 @@ def generate_schedule(kids, unavailability, weekday_constraints, past_allocation
         
         weekday = calendar.weekday(year, month, day) + 1
         week_num = (day + calendar.monthrange(year, month)[0] - 1) // 7  # Determine the week number
-        eligible_kids = [kid for kid in kids if day in availability[kid] and weekday in weekday_constraints.get(kid, set(range(1, 5+1))) and kid not in week_allocations[week_num]]
+        fixed_families_for_day = [kid for kid in fixed if day in fixed[kid]]
+        assert len(fixed_families_for_day) <= 1, f"No se puede asignar más de una familia a un día. Hay {fixed_families_for_day} para el día {day}."
+        if fixed_families_for_day:
+            eligible_kids = fixed_families_for_day
+        else:
+            eligible_kids = [kid for kid in kids if day in availability[kid] and weekday in weekday_constraints.get(kid, set(range(1, 5+1))) and kid not in week_allocations[week_num]]
         
         if eligible_kids:
             # Sort first by fairness score, then by recency (least recently allocated first)
@@ -104,7 +109,7 @@ def render_calendar(schedule, year, month):
         draw.rectangle([x, y, x + cell_width, y + cell_height], outline="black")
         draw.text((x + 15, y + 5), str(day), fill="black", font=font)
         if day in schedule:
-            draw.text((x + cell_width // 4, y + cell_height // 3), schedule[day], fill="black", font=font)
+            draw.text((x + cell_width // 4 - 5, y + cell_height // 3), schedule[day], fill="black", font=font)
     
     img = img.convert("RGB")  # Convert back to RGB for saving
     img.save(f"calendario_{year}_{month}.png")
@@ -115,6 +120,11 @@ def main():
     year, month = config.get("year", 2024), config.get("month", 3)
     kids = config.get("kids", [])
     unavailability = config.get("unavailability", {})
+    if unavailability is None:
+        unavailability = {}
+    fixed = config.get("fixed", {})
+    if fixed is None:
+        fixed = {}
     weekday_constraints = config.get("weekday_constraints", {})
     closed_days = set(config.get("closed_days", []))
 
@@ -122,8 +132,9 @@ def main():
     for k in kids:
         if k not in past_allocations['fairness']:
             past_allocations['fairness'][k] = max(past_allocations['fairness'].values()) # start with the best score
+            past_allocations['recency'].append(k) # Begins at the end of the round
 
-    schedule, updated_allocations = generate_schedule(kids, unavailability, weekday_constraints, past_allocations, year, month, closed_days)
+    schedule, updated_allocations = generate_schedule(kids, unavailability, fixed, weekday_constraints, past_allocations, year, month, closed_days)
     save_allocations(updated_allocations, year, month)
     render_calendar(schedule, year, month)
 
