@@ -135,6 +135,7 @@ def main():
             past_allocations['recency'].append(k) # Begins at the end of the round
 
     schedule, updated_allocations = generate_schedule(kids, unavailability, fixed, weekday_constraints, past_allocations, year, month, closed_days)
+    updated_allocations['schedule'] = schedule
     save_allocations(updated_allocations, year, month)
     render_calendar(schedule, year, month)
 
