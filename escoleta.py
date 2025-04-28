@@ -86,9 +86,12 @@ def render_calendar(schedule, year, month):
     draw = ImageDraw.Draw(img)    
     try:
         font = ImageFont.truetype("Arial.ttf", 24)  # Modern and smooth font
+        bold_font = ImageFont.truetype("Arial Bold.ttf", 22)  # Modern and smooth font
+        small_font = ImageFont.truetype("Arial.ttf", 18)  # Modern and smooth font
     except IOError:
         print('Error Loading font')
         font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
     
     title = f"Calendario de Comidas - {calendar.month_name[month]} {year}"
     draw.text((width//4, vertical_offset), title, fill="black", font=font)
@@ -109,7 +112,9 @@ def render_calendar(schedule, year, month):
         draw.rectangle([x, y, x + cell_width, y + cell_height], outline="black")
         draw.text((x + 15, y + 5), str(day), fill="black", font=font)
         if day in schedule:
-            draw.text((x + cell_width // 4 - 5, y + cell_height // 3), schedule[day], fill="black", font=font)
+            draw.text((x + cell_width // 4 - 5, y + cell_height // 3), schedule[day], fill="black", font=bold_font)
+            if schedule[day] != "TANCAT" and col < 5:
+                draw.text((x + cell_width // 4 - 5, y + cell_height // 3 + 40), f"(pack {col+1})", fill="black", font=small_font)
     
     img = img.convert("RGB")  # Convert back to RGB for saving
     img.save(f"calendario_{year}_{month}.png")
